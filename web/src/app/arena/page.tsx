@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAccount, useReadContract, useReadContracts, useWriteContract, usePublicClient } from "wagmi";
 import { parseEther } from "viem";
 import CodeMirror from "@uiw/react-codemirror";
@@ -16,9 +17,8 @@ import { Button } from "@/components/ui/button";
 export default function ArenaPage() {
   const { address, isConnected } = useAccount();
 
-  // Track the current phase of the Arena
-  // "IDLE" -> "QUEUE" -> "CODING" -> "WAITING_OPPONENT" -> "BATTLE"
-  const [phase, setPhase] = useState<"IDLE" | "QUEUE" | "CODING" | "WAITING_OPPONENT" | "BATTLE">("IDLE");
+  // "IDLE" -> "QUEUE" -> "CODING" -> "WAITING_OPPONENT" -> "COUNTDOWN" -> "BATTLE"
+  const [phase, setPhase] = useState<"IDLE" | "QUEUE" | "CODING" | "WAITING_OPPONENT" | "COUNTDOWN" | "BATTLE">("IDLE");
   
   const [activeBattleId, setActiveBattleId] = useState<bigint | null>(null);
   const [code, setCode] = useState("");
@@ -26,6 +26,7 @@ export default function ArenaPage() {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [completedBattleIds, setCompletedBattleIds] = useState<Set<number>>(new Set());
+  const [countdown, setCountdown] = useState(3);
   
   const publicClient = usePublicClient();
 
@@ -235,6 +236,9 @@ export default function ArenaPage() {
       });
 
       const data = await response.json();
+      if (!data?.choices?.[0]?.message?.content) {
+        throw new Error("OpenRouter returned empty response: " + JSON.stringify(data));
+      }
       const statsStr = data.choices[0].message.content.trim();
       
       // Clean up markdown wrapping if present
@@ -268,15 +272,27 @@ export default function ArenaPage() {
     }
   };
 
-  // Poll for Battle Completion
+  // Poll for Battle Completion -> transition to COUNTDOWN
   useEffect(() => {
     if (phase === "WAITING_OPPONENT" && battleData) {
       const isComplete = battleData[13]; // isComplete boolean
       if (isComplete) {
-        setPhase("BATTLE");
+        setCountdown(3);
+        setPhase("COUNTDOWN");
       }
     }
   }, [phase, battleData]);
+
+  // Countdown timer: 3 -> 2 -> 1 -> BATTLE
+  useEffect(() => {
+    if (phase !== "COUNTDOWN") return;
+    if (countdown <= 0) {
+      setPhase("BATTLE");
+      return;
+    }
+    const timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [phase, countdown]);
 
 
   if (!isConnected) {
@@ -406,6 +422,40 @@ export default function ArenaPage() {
              <h2 className="text-3xl font-[family-name:var(--font-heading)] text-white tracking-widest uppercase">Awaiting Opponent's Code</h2>
              <p className="text-white/40 mt-2">Your stats have been locked in on the Monad Testnet. Waiting for opponent...</p>
            </div>
+        </div>
+      )}
+
+      {/* PHASE: COUNTDOWN (3-2-1 synchronized timer) */}
+      {phase === "COUNTDOWN" && (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
+          <h2 className="text-xl font-bold text-white/40 uppercase tracking-[0.5em]">
+            Both fighters ready
+          </h2>
+          
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={countdown}
+              initial={{ opacity: 0, scale: 3, filter: "blur(20px)" }}
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+              exit={{ opacity: 0, scale: 0.2, filter: "blur(10px)" }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="flex items-center justify-center"
+            >
+              {countdown > 0 ? (
+                <span className="text-[12rem] font-[family-name:var(--font-heading)] text-white leading-none drop-shadow-[0_0_60px_rgba(255,255,255,0.4)]">
+                  {countdown}
+                </span>
+              ) : (
+                <span className="text-7xl font-[family-name:var(--font-heading)] text-white tracking-widest drop-shadow-[0_0_40px_rgba(255,255,255,0.6)]">
+                  FIGHT!
+                </span>
+              )}
+            </motion.div>
+          </AnimatePresence>
+
+          <p className="text-white/30 text-sm uppercase tracking-widest">
+            Battle starts in...
+          </p>
         </div>
       )}
 
