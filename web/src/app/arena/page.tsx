@@ -31,7 +31,7 @@ export default function ArenaPage() {
   const publicClient = usePublicClient();
 
   // The provided API Key for Code Evaluation
-  const OPENROUTER_API_KEY = "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";
+  const OPENROUTER_API_KEY = "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";
 
   const activeQuestionIndex = activeBattleId ? Number(activeBattleId) % ARENA_QUESTIONS.length : 0;
   const activeQuestion = ARENA_QUESTIONS[activeQuestionIndex];
@@ -202,64 +202,79 @@ export default function ArenaPage() {
     }
   }, [phase, battleData, address]);
 
+  // Model fallback chain — tries each model until one succeeds
+  const AI_MODELS = [
+    "openai/gpt-4o-mini",
+    "google/gemini-flash-1.5-8b",
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+  ];
+
+  const gradeCodeWithAI = async (questionTitle: string, questionDesc: string, userCode: string): Promise<{attack: number, defense: number, special: number}> => {
+    const systemPrompt = "You are an expert programming judge for a battle arena. Grade the user's code for the given question strictly on a scale of 10 to 50 for three stats: 'attack' (efficiency and core logic), 'defense' (error handling and edge cases), and 'special' (cleverness and readability). Only output a raw JSON object string like: {\"attack\":45,\"defense\":20,\"special\":35}. DO NOT wrap it in markdown block quotes. Provide no other text.";
+    const userPrompt = `Question: ${questionTitle}\nDescription: ${questionDesc}\nCode:\n${userCode}`;
+
+    for (const model of AI_MODELS) {
+      try {
+        console.log(`[AI Grader] Trying model: ${model}`);
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://eternal-game.xyz",
+            "X-Title": "Eternal Battle Arena"
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt }
+            ]
+          })
+        });
+
+        const data = await response.json();
+        console.log(`[AI Grader] ${model} response:`, JSON.stringify(data));
+
+        if (!response.ok) {
+          console.warn(`[AI Grader] ${model} failed with HTTP ${response.status}, trying next...`);
+          continue;
+        }
+        if (!data?.choices?.[0]?.message?.content) {
+          console.warn(`[AI Grader] ${model} returned empty content, trying next...`);
+          continue;
+        }
+
+        const statsStr = data.choices[0].message.content.trim();
+        const cleanJson = statsStr.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsedStats = JSON.parse(cleanJson);
+
+        return {
+          attack: Math.max(10, Math.min(50, Number(parsedStats.attack) || 25)),
+          defense: Math.max(10, Math.min(50, Number(parsedStats.defense) || 25)),
+          special: Math.max(10, Math.min(50, Number(parsedStats.special) || 25)),
+        };
+      } catch (e) {
+        console.warn(`[AI Grader] ${model} threw error:`, e);
+        continue;
+      }
+    }
+
+    // All models failed — return fallback
+    console.error("[AI Grader] All models failed. Using fallback stats.");
+    return { attack: 25, defense: 25, special: 25 };
+  };
+
   // Evaluate Code via AI & Submit Stats
   const submitCode = async () => {
     if (!activeBattleId || !code.trim()) return;
 
     setIsEvaluating(true);
 
-    let hp = 100; // Fixed HP
-    let attack = 50;
-    let defense = 50;
-    let special = 50;
-
-    try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://eternal-game.xyz",
-          "X-Title": "Eternal Battle Arena"
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-4o-mini", // Fast, deterministic model for judging
-          messages: [
-            {
-              role: "system",
-              content: "You are an expert programming judge for a battle arena. Grade the user's code for the given question strictly on a scale of 10 to 50 for three stats: 'attack' (efficiency and core logic), 'defense' (error handling and edge cases), and 'special' (cleverness and readability). Only output a raw JSON object string like: {\"attack\":45,\"defense\":20,\"special\":35}. DO NOT wrap it in markdown block quotes. Provide no other text."
-            },
-            {
-              role: "user",
-              content: `Question: ${activeQuestion.title}\nDescription: ${activeQuestion.description}\nCode:\n${code}`
-            }
-          ]
-        })
-      });
-
-      const data = await response.json();
-      console.log("OpenRouter raw response:", JSON.stringify(data));
-      
-      if (!response.ok) {
-        throw new Error(`OpenRouter HTTP ${response.status}: ${JSON.stringify(data)}`);
-      }
-      if (!data?.choices?.[0]?.message?.content) {
-        throw new Error("OpenRouter returned empty choices: " + JSON.stringify(data));
-      }
-      const statsStr = data.choices[0].message.content.trim();
-      
-      // Clean up markdown wrapping if present
-      const cleanJson = statsStr.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsedStats = JSON.parse(cleanJson);
-      
-      attack = Math.max(10, Math.min(50, Number(parsedStats.attack) || 25));
-      defense = Math.max(10, Math.min(50, Number(parsedStats.defense) || 25));
-      special = Math.max(10, Math.min(50, Number(parsedStats.special) || 25));
-      
-    } catch (e) {
-      console.error("OpenRouter Evaluation Failed, using fallback stats", e);
-      attack = 25; defense = 25; special = 25;
-    }
+    const hp = 100; // Fixed HP
+    const graded = await gradeCodeWithAI(activeQuestion.title, activeQuestion.description, code);
+    const { attack, defense, special } = graded;
 
     setIsEvaluating(false);
 
