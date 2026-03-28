@@ -19,6 +19,7 @@ interface FighterParams {
 
 interface BattleScreenProps {
   battleId: bigint;
+  currentPlayerAddress: string;
   player1Fighter: FighterParams;
   player2Fighter: FighterParams;
   onComplete: (winner: string) => void;
@@ -32,7 +33,7 @@ interface Round {
   p2Damage: number;
 }
 
-export function BattleScreen({ battleId, player1Fighter, player2Fighter, onComplete }: BattleScreenProps) {
+export function BattleScreen({ battleId, currentPlayerAddress, player1Fighter, player2Fighter, onComplete }: BattleScreenProps) {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [currentRound, setCurrentRound] = useState(0);
   const [activeAttacker, setActiveAttacker] = useState<1 | 2 | null>(null);
@@ -166,6 +167,13 @@ export function BattleScreen({ battleId, player1Fighter, player2Fighter, onCompl
         
         {/* P1 Side */}
         <div className="relative">
+          <div className="text-center mb-3">
+            {player1Fighter.address.toLowerCase() === currentPlayerAddress.toLowerCase() ? (
+              <span className="px-4 py-1 rounded-full bg-white text-black text-xs font-black uppercase tracking-widest shadow-[0_0_15px_rgba(255,255,255,0.4)]">★ YOU</span>
+            ) : (
+              <span className="px-4 py-1 rounded-full bg-white/10 text-white/50 text-xs font-bold uppercase tracking-widest">OPPONENT</span>
+            )}
+          </div>
           <FighterCard 
             stats={{...player1Fighter, health: player1Fighter.maxHealth}} 
             currentHealth={p1CurrentHealth}
@@ -223,6 +231,13 @@ export function BattleScreen({ battleId, player1Fighter, player2Fighter, onCompl
 
         {/* P2 Side */}
         <div className="relative">
+          <div className="text-center mb-3">
+            {player2Fighter.address.toLowerCase() === currentPlayerAddress.toLowerCase() ? (
+              <span className="px-4 py-1 rounded-full bg-white text-black text-xs font-black uppercase tracking-widest shadow-[0_0_15px_rgba(255,255,255,0.4)]">★ YOU</span>
+            ) : (
+              <span className="px-4 py-1 rounded-full bg-white/10 text-white/50 text-xs font-bold uppercase tracking-widest">OPPONENT</span>
+            )}
+          </div>
           <FighterCard 
             stats={{...player2Fighter, health: player2Fighter.maxHealth}} 
             currentHealth={p2CurrentHealth}

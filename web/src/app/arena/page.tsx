@@ -218,7 +218,9 @@ export default function ArenaPage() {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://eternal-game.xyz",
+          "X-Title": "Eternal Battle Arena"
         },
         body: JSON.stringify({
           model: "openai/gpt-4o-mini", // Fast, deterministic model for judging
@@ -236,8 +238,13 @@ export default function ArenaPage() {
       });
 
       const data = await response.json();
+      console.log("OpenRouter raw response:", JSON.stringify(data));
+      
+      if (!response.ok) {
+        throw new Error(`OpenRouter HTTP ${response.status}: ${JSON.stringify(data)}`);
+      }
       if (!data?.choices?.[0]?.message?.content) {
-        throw new Error("OpenRouter returned empty response: " + JSON.stringify(data));
+        throw new Error("OpenRouter returned empty choices: " + JSON.stringify(data));
       }
       const statsStr = data.choices[0].message.content.trim();
       
@@ -350,46 +357,44 @@ export default function ArenaPage() {
       {/* PHASE: CODING (Writing the algorithm) */}
       {phase === "CODING" && (
         <div className="space-y-6 relative">
-          <div className="flex justify-between items-center bg-white/5 border border-white/10 p-4 rounded-xl">
-            <div className="flex items-center gap-3">
-              <Code2 className="w-8 h-8 text-white/70" />
-              <div>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-[family-name:var(--font-heading)] text-white tracking-widest uppercase">{activeQuestion.title}</h2>
-                  <span className={`px-2 py-0.5 text-xs font-bold rounded ${activeQuestion.difficulty === 'Easy' ? 'bg-white/10 text-white/60' : 'bg-white/10 text-white/80'}`}>
-                    {activeQuestion.difficulty}
-                  </span>
-                  <span className="px-2 py-0.5 text-xs font-bold rounded bg-white/5 text-white/40 uppercase">
-                    {activeQuestion.language}
-                  </span>
-                </div>
-                <p className="text-white/40 text-sm font-bold mt-1 max-w-2xl">{activeQuestion.description}</p>
+          {/* Question Card - Full width, properly displayed */}
+          <div className="bg-white/5 border border-white/10 p-6 rounded-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Code2 className="w-8 h-8 text-white/70" />
+                <h2 className="text-xl font-[family-name:var(--font-heading)] text-white tracking-widest uppercase">{activeQuestion.title}</h2>
+                <span className={`px-2 py-0.5 text-xs font-bold rounded ${activeQuestion.difficulty === 'Easy' ? 'bg-white/10 text-white/60' : 'bg-white/10 text-white/80'}`}>
+                  {activeQuestion.difficulty}
+                </span>
+                <span className="px-2 py-0.5 text-xs font-bold rounded bg-white/5 text-white/40 uppercase">
+                  {activeQuestion.language}
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <Button 
+                  onClick={handleForfeit}
+                  disabled={isExiting}
+                  variant="outline"
+                  className="rounded-full"
+                >
+                  {isExiting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                  {isExiting ? "Forfeiting..." : "Forfeit"}
+                </Button>
+                <ButtonWithIcon
+                  onClick={submitCode}
+                  disabled={isEvaluating || !code.trim()}
+                >
+                  {isEvaluating ? "AI Evaluating Code..." : "Submit Algorithm"}
+                </ButtonWithIcon>
               </div>
             </div>
-            
-            <div className="flex items-center gap-4">
-              <Button 
-                onClick={handleForfeit}
-                disabled={isExiting}
-                variant="outline"
-                className="rounded-full"
-              >
-                {isExiting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                {isExiting ? "Forfeiting..." : "Forfeit"}
-              </Button>
-              <ButtonWithIcon
-                onClick={submitCode}
-                disabled={isEvaluating || !code.trim()}
-              >
-                {isEvaluating ? "AI Evaluating Code..." : "Submit Algorithm"}
-              </ButtonWithIcon>
-            </div>
+            <p className="text-white/50 text-base leading-relaxed">{activeQuestion.description}</p>
           </div>
 
           <div className="rounded-xl overflow-hidden border border-white/10 shadow-2xl">
             <CodeMirror
               value={code}
-              height="600px"
+              height="500px"
               theme={oneDark}
               extensions={[javascript({ jsx: true })]}
               onChange={(value) => setCode(value)}
@@ -466,7 +471,8 @@ export default function ArenaPage() {
             RESULT MATRIX
           </h2>
           <BattleScreen 
-            battleId={activeBattleId!} 
+            battleId={activeBattleId!}
+            currentPlayerAddress={address || ""}
             player1Fighter={{
               address: battleData[0],
               name: "Hacker One",
@@ -486,7 +492,6 @@ export default function ArenaPage() {
               codeScore: 100
             }}
             onComplete={(winner) => {
-              // Once animation completes, they can return to lobby
               setTimeout(() => {
                 setCompletedBattleIds(prev => new Set(prev).add(Number(activeBattleId)));
                 setPhase("IDLE");
