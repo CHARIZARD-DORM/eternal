@@ -31,7 +31,7 @@ export default function ArenaPage() {
   const publicClient = usePublicClient();
 
   // The provided API Key for Code Evaluation
-  const OPENROUTER_API_KEY = "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";
+  const OPENROUTER_API_KEY = "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";
 
   const activeQuestionIndex = activeBattleId ? Number(activeBattleId) % ARENA_QUESTIONS.length : 0;
   const activeQuestion = ARENA_QUESTIONS[activeQuestionIndex];
@@ -112,7 +112,7 @@ export default function ArenaPage() {
     abi: BattleArenaABI,
     functionName: "battles",
     args: [activeBattleId || BigInt(0)],
-    query: { refetchInterval: (phase === "QUEUE" || phase === "WAITING_OPPONENT") ? 8000 : false }
+    query: { refetchInterval: (phase === "QUEUE" || phase === "CODING" || phase === "WAITING_OPPONENT") ? 3000 : false }
   }) as any;
 
   const { writeContractAsync } = useWriteContract();
@@ -279,7 +279,6 @@ export default function ArenaPage() {
     setIsEvaluating(false);
 
     setMyStats({ hp, attack, defense, special });
-    setPhase("WAITING_OPPONENT");
 
     try {
       await writeContractAsync({
@@ -288,6 +287,10 @@ export default function ArenaPage() {
         functionName: "submitCodeStats",
         args: [activeBattleId, BigInt(hp), BigInt(attack), BigInt(defense), BigInt(special)],
       });
+      // Only set WAITING_OPPONENT AFTER the tx succeeds
+      setPhase("WAITING_OPPONENT");
+      // Immediately refetch to catch if opponent already submitted
+      setTimeout(() => refetchBattle(), 2000);
     } catch (e) {
       console.error(e);
       setPhase("CODING"); // Revert on failure
