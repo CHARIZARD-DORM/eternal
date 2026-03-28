@@ -12,7 +12,7 @@ export default function LeaderboardPage() {
     address: LEADERBOARD_ADDRESS,
     abi: LeaderboardABI,
     functionName: "getTopPlayers",
-    args: [50n],
+    args: [BigInt(50)],
     query: {
       refetchInterval: 10000, // Poll every 10 seconds
     }
